@@ -1,0 +1,65 @@
+function updateMarketData() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var equitySheet = ss.getSheetByName("EQUITY_L");
+  var updateSheet = ss.getSheetByName("Update Data") || ss.insertSheet("Update Data");
+  updateSheet.clear();
+
+  // Set headers for the Debug Data sheet
+  updateSheet.appendRow([
+      "Symbol", "Today's Date", "Current Price", "Opening Price", "Closing Price", "High", "Low", "52 Week High", "52 Week Low", "Per_change","Volume","Market Capital","PE_Ratio"
+  ]);
+
+  var equityData = equitySheet.getDataRange().getValues();
+  var todayDate = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+
+  // Prepare rows for Update Data sheet
+  var rowsToInsert = equityData
+    .slice(1) // Skip header row
+    .filter(row => row[0]) // Ensure symbol is non-empty
+    .map(row => [
+      row[0],                      // Symbol
+      todayDate,                   // Today's Date
+      `=GOOGLEFINANCE("${row[0]}", "price")`, 
+      `=GOOGLEFINANCE("${row[0]}", "priceopen")`, 
+      `=GOOGLEFINANCE("${row[0]}", "closeyest")`, 
+      `=GOOGLEFINANCE("${row[0]}", "high")`, 
+      `=GOOGLEFINANCE("${row[0]}", "low")`, 
+      `=GOOGLEFINANCE("${row[0]}", "high52")`, 
+      `=GOOGLEFINANCE("${row[0]}", "low52")`, 
+      `=GOOGLEFINANCE("${row[0]}", "changepct")`, 
+      `=GOOGLEFINANCE("${row[0]}", "volume")`, 
+      `=GOOGLEFINANCE("${row[0]}", "marketcap")`, 
+      `=GOOGLEFINANCE("${row[0]}", "pe")`
+    ]);
+
+  // Append all rows at once
+  if (rowsToInsert.length > 0) {
+    updateSheet.getRange(2, 1, rowsToInsert.length, rowsToInsert[0].length).setValues(rowsToInsert);
+  }
+
+  // Replace #N/A with 0
+  replaceNAWithZero(updateSheet);
+}
+
+function replaceNAWithZero(sheet) {
+  var range = sheet.getDataRange();
+  var values = range.getValues();
+
+  // Get the current date and time in IST
+  var istDate = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd");
+
+  for (var i = 0; i < values.length; i++) { // Loop through rows
+    for (var j = 0; j < values[i].length; j++) { // Loop through columns
+      if (values[i][j] === '#N/A') {
+        values[i][j] = 0; // Replace #N/A with 0
+      }
+      // Update "Today's Date" column (assumed to be the second column, index 1)
+      if (j === 1 && i > 0) { // Skip the header row
+        values[i][j] = istDate; // Update with IST date and time
+      }
+    }
+  }
+
+  // Write the updated values back to the sheet
+  range.setValues(values);
+}
