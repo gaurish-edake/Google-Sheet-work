@@ -1,0 +1,66 @@
+function updateHistoricalStockData() {
+  // Define sheet names
+  const equitySheetName = 'EQUITY_L';
+  const historicalSheetName = 'Historical stock data';
+  const batchSize = 85; // Number of symbols to process per execution
+  
+  // Open the sheets
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const equitySheet = spreadsheet.getSheetByName(equitySheetName);
+  const historicalSheet = spreadsheet.getSheetByName(historicalSheetName);
+  
+  // Retrieve the last processed row from the script properties
+  const properties = PropertiesService.getScriptProperties();
+  let lastProcessedRow = parseInt(properties.getProperty('LAST_PROCESSED_ROW')) || 2;
+  
+  // If starting from the first row, clear historical data and set headers
+  if (lastProcessedRow === 2) {
+    historicalSheet.clear();
+    historicalSheet.appendRow(["Symbol", "Date", "Open", "High", "Low", "Close", "Volume"]);
+  }
+
+  // Get all stock symbols from the EQUITY_L sheet
+  const stockSymbols = equitySheet.getRange("A" + lastProcessedRow + ":A" + equitySheet.getLastRow()).getValues().flat().filter(Boolean);
+  
+  // Create a temporary sheet if not exists
+  const tempSheetName = 'Temp_Historical_Data';
+  let tempSheet = spreadsheet.getSheetByName(tempSheetName);
+  if (!tempSheet) {
+    tempSheet = spreadsheet.insertSheet(tempSheetName);
+  } else {
+    tempSheet.clear();
+  }
+  
+  // Process symbols in batches
+  let processedCount = 0;
+  for (let i = 0; i < stockSymbols.length; i++) {
+    if (processedCount >= batchSize) {
+      break;
+    }
+
+    const symbol = stockSymbols[i];
+    tempSheet.clear();
+    tempSheet.getRange("A1").setFormula(`=GOOGLEFINANCE("${symbol}", "all", TODAY()-30, TODAY())`);
+    SpreadsheetApp.flush();
+    Utilities.sleep(2000);
+
+    const dataRange = tempSheet.getDataRange().getValues();
+    dataRange.slice(1).forEach(row => {
+      if (row[0]) {
+        historicalSheet.appendRow([symbol, ...row]);
+      }
+    });
+    
+    processedCount++;
+  }
+  
+  // Update last processed row
+  lastProcessedRow += processedCount;
+  properties.setProperty('LAST_PROCESSED_ROW', lastProcessedRow);
+
+  // Clean up by deleting the temporary sheet if finished
+  if (lastProcessedRow > equitySheet.getLastRow()) {
+    properties.deleteProperty('LAST_PROCESSED_ROW');
+    spreadsheet.deleteSheet(tempSheet);
+  }
+}
